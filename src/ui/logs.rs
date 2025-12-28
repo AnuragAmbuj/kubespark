@@ -1,3 +1,4 @@
+use crate::theme::ThemeColors;
 use crate::ui::glass::{GlassExt, GlassStyle};
 use gpui::*;
 
@@ -26,19 +27,21 @@ impl LogView {
     pub fn render(
         &self,
         on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static + Clone,
+        colors: &ThemeColors,
     ) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
             .size_full()
-            .glass_panel(self.glass_style)
-            .child(self.render_header(on_close))
-            .child(self.render_log_content())
+            .glass_panel(self.glass_style, colors)
+            .child(self.render_header(on_close, colors))
+            .child(self.render_log_content(colors))
     }
 
     fn render_header(
         &self,
         on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static + Clone,
+        colors: &ThemeColors,
     ) -> impl IntoElement {
         div()
             .flex()
@@ -47,7 +50,7 @@ impl LogView {
             .h(px(48.0))
             .px_4()
             .border_b_1()
-            .border_color(rgb(0x3e3e3e))
+            .border_color(colors.border)
             .child(
                 div()
                     .flex()
@@ -57,13 +60,13 @@ impl LogView {
                         div()
                             .text_lg()
                             .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(0xffffff))
+                            .text_color(colors.text_primary)
                             .child("Logs"),
                     )
                     .child(
                         div()
                             .text_sm()
-                            .text_color(rgb(0x888888))
+                            .text_color(colors.text_muted)
                             .child(self.pod_name.clone()),
                     ),
             )
@@ -73,27 +76,34 @@ impl LogView {
                     .px_2()
                     .py_1()
                     .text_sm()
-                    .text_color(rgb(0xcccccc))
-                    .hover(|style| style.text_color(rgb(0xffffff)))
+                    .text_color(colors.text_secondary)
+                    .hover({
+                        let cloned = colors.clone();
+                        move |style| style.text_color(cloned.text_primary)
+                    })
                     .cursor(CursorStyle::PointingHand)
                     .on_click(on_close)
                     .child("Close"),
             )
     }
 
-    fn render_log_content(&self) -> impl IntoElement {
+    fn render_log_content(&self, colors: &ThemeColors) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
             .flex_1()
             .p_4()
-            // .overflow_y_scroll() // Temporarily removed to fix build
-            .bg(hsla(0.0, 0.0, 0.12, 0.8))
+            // Log background: distinct from panel
+            .bg(if Hsla::from(colors.bg_app).l > 0.5 {
+                Hsla::from(colors.bg_sidebar) // Darker than panel in light mode usually? Or just use sidebar
+            } else {
+                Hsla::from(colors.bg_app).opacity(0.5) // Dark mode: darker
+            })
             .child(
                 div()
                     .font_family("'JetBrains Mono', 'Fira Code', monospace")
                     .text_xs()
-                    .text_color(rgb(0xcccccc))
+                    .text_color(colors.text_secondary)
                     .line_height(relative(1.5))
                     .children(self.logs.iter().map(|line| div().child(line.clone()))),
             )

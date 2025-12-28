@@ -1,14 +1,18 @@
-use gpui::*;
-
+use crate::theme::ThemeColors;
 use crate::ui::glass::{GlassExt, GlassStyle};
+use gpui::*;
 
 pub struct DashboardView {
     glass_style: GlassStyle,
+    colors: ThemeColors,
 }
 
 impl DashboardView {
-    pub fn new(glass_style: GlassStyle) -> Self {
-        Self { glass_style }
+    pub fn new(glass_style: GlassStyle, colors: &ThemeColors) -> Self {
+        Self {
+            glass_style,
+            colors: colors.clone(),
+        }
     }
 
     pub fn render(&self) -> impl IntoElement {
@@ -16,7 +20,7 @@ impl DashboardView {
             .flex()
             .flex_col()
             .size_full()
-            .glass_panel(self.glass_style)
+            .glass_panel(self.glass_style, &self.colors)
             .child(self.render_header())
             .child(self.render_stats())
             .child(
@@ -38,12 +42,12 @@ impl DashboardView {
             .h(px(48.0))
             .px_4()
             .border_b_1()
-            .border_color(rgb(0x3e3e3e))
+            .border_color(self.colors.border)
             .child(
                 div()
                     .text_lg()
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(0xffffff))
+                    .text_color(self.colors.text_primary)
                     .child("Cluster Overview"),
             )
     }
@@ -67,11 +71,11 @@ impl DashboardView {
             .flex_col()
             .justify_center()
             .items_center()
-            .glass_card(self.glass_style)
+            .glass_card(self.glass_style, &self.colors)
             .child(
                 div()
                     .text_sm()
-                    .text_color(rgb(0xaaaaaa))
+                    .text_color(self.colors.text_muted)
                     .mb_1()
                     .child(title.to_string()),
             )
@@ -79,13 +83,13 @@ impl DashboardView {
                 div()
                     .text_2xl()
                     .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(0xffffff))
+                    .text_color(self.colors.text_primary)
                     .child(value.to_string()),
             )
             .child(
                 div()
                     .text_xs()
-                    .text_color(rgb(0x4ade80)) // Green success color
+                    .text_color(self.colors.status_ok) // Use status_ok for green
                     .mt_1()
                     .child(subtitle.to_string()),
             )
@@ -96,13 +100,13 @@ impl DashboardView {
             .flex()
             .flex_col()
             .flex_1()
-            .glass_card(self.glass_style)
+            .glass_card(self.glass_style, &self.colors)
             .p_4()
             .child(
                 div()
                     .text_sm()
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(0xcccccc))
+                    .text_color(self.colors.text_secondary)
                     .mb_4()
                     .child("Resource Usage History"),
             )
@@ -164,13 +168,13 @@ impl DashboardView {
             .flex()
             .flex_col()
             .flex_1()
-            .glass_card(self.glass_style)
+            .glass_card(self.glass_style, &self.colors)
             .p_4()
             .child(
                 div()
                     .text_sm()
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(0xcccccc))
+                    .text_color(self.colors.text_secondary)
                     .mb_4()
                     .child("Recent Events"),
             )

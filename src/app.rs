@@ -2,12 +2,13 @@ use futures::channel::oneshot;
 use gpui::prelude::*;
 use gpui::{AsyncApp, Context, InteractiveElement, WeakEntity};
 use gpui::*;
-use log::{info, error, debug};
+use log::{info, error};
 use std::sync::Arc;
 
 use crate::kubernetes::{KubeClient, ResourceItem, ResourceKind};
 use crate::settings::manager::SettingsManager;
 use crate::settings::ui::{SettingsPanel, SettingsTab};
+use crate::theme::{ThemeColors, ThemeExt};
 // Removed unused imports
 use crate::ui::{
     ActiveView, DashboardView, DetailView, GlassStyle, LogView, ResourceListView, Sidebar,
@@ -42,7 +43,6 @@ pub enum ConnectionStatus {
 impl KubeSparkApp {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let kube_client = Arc::new(KubeClient::new());
-        let settings_manager = Arc::new(SettingsManager::new());
         
         info!("Initializing KubeSparkApp");
 
@@ -68,6 +68,10 @@ impl KubeSparkApp {
             }
         }).detach();
 
+        // 5. Return Initial State
+        let settings_manager = Arc::new(SettingsManager::new());
+        let is_sidebar_collapsed = settings_manager.get_settings().appearance.sidebar_collapsed;
+
         Self {
             kube_client,
             settings_manager,
@@ -76,7 +80,7 @@ impl KubeSparkApp {
             selected_resource: None,
             connection_status: ConnectionStatus::Disconnected,
             sidebar_width: px(220.0),
-            is_sidebar_collapsed: false,
+            is_sidebar_collapsed,
             detail_width: px(400.0),
             show_detail: false,
             show_settings: false,
@@ -102,6 +106,9 @@ impl KubeSparkApp {
                     namespace: None,
                     status: "Ready".to_string(),
                     age: "5d".to_string(),
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::json!({}),
                 },
                 ResourceItem {
@@ -110,6 +117,9 @@ impl KubeSparkApp {
                     namespace: None,
                     status: "Ready".to_string(),
                     age: "5d".to_string(),
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::json!({}),
                 },
                 ResourceItem {
@@ -118,6 +128,9 @@ impl KubeSparkApp {
                     namespace: None,
                     status: "Ready".to_string(),
                     age: "5d".to_string(),
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::json!({}),
                 },
                 ResourceItem {
@@ -126,6 +139,9 @@ impl KubeSparkApp {
                     namespace: Some("default".to_string()),
                     status: "Running".to_string(),
                     age: "2h".to_string(),
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::json!({}),
                 },
                 ResourceItem {
@@ -134,6 +150,9 @@ impl KubeSparkApp {
                     namespace: Some("kube-system".to_string()),
                     status: "Running".to_string(),
                     age: "5d".to_string(),
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::json!({}),
                 },
             ],
@@ -152,6 +171,12 @@ impl KubeSparkApp {
     pub fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
         info!("Toggling sidebar");
         self.is_sidebar_collapsed = !self.is_sidebar_collapsed;
+        
+        let collapsed = self.is_sidebar_collapsed;
+        self.settings_manager.update_settings(move |s| {
+            s.appearance.sidebar_collapsed = collapsed;
+        }).ok();
+        
         cx.notify();
     }
 
@@ -159,6 +184,12 @@ impl KubeSparkApp {
         info!("Switching context to: {}", ctx_name);
         self.show_context_menu = false;
         self.current_context = ctx_name.clone();
+        
+        let saved_ctx = ctx_name.clone();
+        self.settings_manager.update_settings(move |s| {
+            s.kubernetes.context = saved_ctx;
+        }).ok();
+        
         cx.notify();
         let client = self.kube_client.clone();
         let mut cx_async = cx.to_async();
@@ -167,15 +198,17 @@ impl KubeSparkApp {
             let _ = client.connect_with_context(&ctx_name).await;
             let _ = this.update(&mut cx_async, |app, cx| {
                 app.connection_status = ConnectionStatus::Connected;
+                app.refresh(cx);
                 cx.notify();
             });
         }).detach();
     }
 
-    pub fn select_resource_kind(&mut self, kind: ResourceKind) {
+    pub fn select_resource_kind(&mut self, kind: ResourceKind, cx: &mut Context<Self>) {
         self.active_view = ActiveView::Resources(kind);
         self.selected_resource = None;
         self.show_detail = false;
+        self.refresh(cx);
     }
 
     pub fn select_resource(&mut self, resource: ResourceItem) {
@@ -188,9 +221,34 @@ impl KubeSparkApp {
         self.selected_resource = None;
     }
 
-    pub fn refresh(&mut self) {}
+    pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        let kind = match &self.active_view {
+            ActiveView::Resources(k) => k.clone(),
+            _ => return,
+        };
+        
+        info!("Refreshing resources: {:?}", kind);
+        
+        let namespace = self.selected_namespace.clone();
+        let client = self.kube_client.clone();
+        let mut cx_async = cx.to_async();
+        
+        cx.spawn(move |this: WeakEntity<KubeSparkApp>, _cx: &mut AsyncApp| async move {
+            match client.list_resources(kind, namespace.as_deref()).await {
+                Ok(items) => {
+                    this.update(&mut cx_async, |app, cx| {
+                         app.resources = items;
+                         cx.notify();
+                    }).ok();
+                }
+                Err(e) => {
+                    error!("Failed to list resources: {}", e);
+                }
+            }
+        }).detach();
+    }
 
-    fn render_title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_title_bar(&self, cx: &mut Context<Self>, colors: &ThemeColors) -> impl IntoElement {
         let is_macos = cfg!(target_os = "macos");
 
         div()
@@ -202,18 +260,65 @@ impl KubeSparkApp {
             .px_4()
             // Enabling Window Dragging
             .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
-            // Left spacer (for traffic lights on macOS)
-            .child(if is_macos {
-                div().w(px(70.0))
-            } else {
-                div().w(px(0.0))
-            })
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(if is_macos {
+                        div().w(px(70.0))
+                    } else {
+                        div().w(px(0.0))
+                    })
+                    // Sidebar Toggle
+                    .child(
+                        div()
+                            .id("sidebar-toggle")
+                            .w(px(28.0))
+                            .h(px(28.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_md()
+                            .cursor(CursorStyle::PointingHand)
+                            .bg(colors.bg_element)
+                            .hover({
+                                let cloned = colors.clone();
+                                move |style| style.bg(cloned.bg_element_hover)
+                            })
+                            .active({
+                                let cloned = colors.clone();
+                                move |style| style.bg(cloned.bg_element_active)
+                            })
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_sidebar(cx);
+                            }))
+                            .child(
+                                // Sidebar Icon Construction
+                                div()
+                                    .w(px(18.0))
+                                    .h(px(14.0))
+                                    .border_1()
+                                    .border_color(colors.text_secondary)
+                                    .rounded_sm()
+                                    .flex()
+                                    .child(
+                                        div()
+                                            .w(px(6.0))
+                                            .h_full()
+                                            .border_r_1()
+                                            .border_color(colors.text_secondary)
+                                    )
+                            ),
+                    ),
+            )
             // Center title
             .child(
                 div()
                     .text_sm()
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(rgb(0xffffff))
+                    .text_color(colors.text_primary)
                     .child("KubeSpark"),
             )
             // Right side controls (Settings + Window Controls on Linux)
@@ -233,10 +338,16 @@ impl KubeSparkApp {
                             .justify_center()
                             .rounded_md()
                             .cursor(CursorStyle::PointingHand)
-                            .bg(hsla(0.0, 0.0, 0.24, 0.5))
-                            .hover(|style| style.bg(rgb(0x4e4e52)))
-                            .active(|style| style.bg(rgb(0x5e5e62)))
-                            .child(div().text_sm().text_color(rgb(0xcccccc)).child("⚙"))
+                            .bg(colors.bg_element)
+                            .hover({
+                                let cloned = colors.clone();
+                                move |style| style.bg(cloned.bg_element_hover)
+                            })
+                            .active({
+                                let cloned = colors.clone();
+                                move |style| style.bg(cloned.bg_element_active)
+                            })
+                            .child(div().text_sm().text_color(colors.text_secondary).child("⚙"))
                              // Stop propagation
                             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .on_click(cx.listener(|this, _, _, _| {
@@ -249,20 +360,25 @@ impl KubeSparkApp {
                             div()
                                 .flex()
                                 .items_center()
-                                .gap_1()
+                                .gap_2()
+                                .ml_4()
                                 // Minimize
                                 .child(
                                     div()
                                         .id("minimize-button")
-                                        .w(px(28.0))
-                                        .h(px(28.0))
+                                        .w(px(24.0))
+                                        .h(px(24.0))
                                         .flex()
                                         .items_center()
                                         .justify_center()
                                         .rounded_md()
                                         .cursor(CursorStyle::PointingHand)
-                                        .hover(|style| style.bg(rgb(0x3e3e3e)).text_color(rgb(0xffffff)))
-                                        .child(div().text_xs().child("-"))
+                                        .bg(colors.bg_element)
+                                        .hover({
+                                            let cloned = colors.clone();
+                                            move |style| style.bg(cloned.bg_element_hover).text_color(cloned.text_primary)
+                                        })
+                                        .child(div().text_xs().text_color(colors.text_primary).mb_1().child("_"))
                                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                                         .on_click(|_, window, _| {
                                             window.minimize_window();
@@ -272,15 +388,19 @@ impl KubeSparkApp {
                                 .child(
                                     div()
                                         .id("maximize-button")
-                                        .w(px(28.0))
-                                        .h(px(28.0))
+                                        .w(px(24.0))
+                                        .h(px(24.0))
                                         .flex()
                                         .items_center()
                                         .justify_center()
                                         .rounded_md()
                                         .cursor(CursorStyle::PointingHand)
-                                        .hover(|style| style.bg(rgb(0x3e3e3e)).text_color(rgb(0xffffff)))
-                                        .child(div().text_xs().child("□"))
+                                        .bg(colors.bg_element)
+                                        .hover({
+                                            let cloned = colors.clone();
+                                            move |style| style.bg(cloned.bg_element_hover).text_color(cloned.text_primary)
+                                        })
+                                        .child(div().text_xs().text_color(colors.text_primary).child("□"))
                                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                                         .on_click(|_, window, _| {
                                             window.zoom_window();
@@ -290,15 +410,19 @@ impl KubeSparkApp {
                                 .child(
                                     div()
                                         .id("close-button")
-                                        .w(px(28.0))
-                                        .h(px(28.0))
+                                        .w(px(24.0))
+                                        .h(px(24.0))
                                         .flex()
                                         .items_center()
                                         .justify_center()
                                         .rounded_md()
                                         .cursor(CursorStyle::PointingHand)
-                                        .hover(|style| {
-                                            style.bg(rgb(0xc42b1c)).text_color(rgb(0xffffff))
+                                        .bg(colors.bg_element)
+                                        .hover({
+                                            let cloned = colors.clone();
+                                            move |style| {
+                                                style.bg(cloned.status_error).text_color(cloned.text_inverse)
+                                            }
                                         })
                                         .child(div().text_xs().child("✕"))
                                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -328,9 +452,9 @@ impl Render for KubeSparkApp {
                 .flex()
                 .flex_col()
                 .size_full()
-                .bg(rgb(0x1e1e1e))
-                .text_color(rgb(0xe0e0e0))
-                .child(self.render_title_bar(cx))
+                .bg(settings.appearance.theme.colors().bg_app)
+                .text_color(settings.appearance.theme.colors().text_primary)
+                .child(self.render_title_bar(cx, &settings.appearance.theme.colors()))
                 .child(
                     SettingsPanel::render_panel(
                         self.settings_manager.clone(),
@@ -339,12 +463,23 @@ impl Render for KubeSparkApp {
                         cx.listener(|this, _, _, _| {
                             this.toggle_settings();
                         }),
+                        {
+                            let weak = cx.entity().downgrade();
+                            move |_, cx| {
+                                let _ = weak.update(cx, |_, cx| cx.notify());
+                            }
+                        },
                     )
                 )
                 .into_any_element();
         }
 
-        let sidebar_width = self.sidebar_width;
+        let is_sidebar_collapsed = self.is_sidebar_collapsed;
+        let sidebar_width = if is_sidebar_collapsed {
+            px(50.0)
+        } else {
+            self.sidebar_width
+        };
         let detail_width = self.detail_width;
         let show_detail = self.show_detail;
         let selected_resource = self.selected_resource.clone();
@@ -352,16 +487,19 @@ impl Render for KubeSparkApp {
         let active_view = self.active_view.clone();
         let is_sidebar_collapsed = self.is_sidebar_collapsed;
 
+        // Get theme colors
+        let colors = settings.appearance.theme.colors();
+
         div()
             .flex()
             .flex_col()
             .size_full()
-            .bg(rgb(0x1e1e1e))
-            .text_color(rgb(0xe0e0e0))
+            .bg(colors.bg_app)
+            .text_color(colors.text_primary)
             .font_family(
                 "'SF Pro Display', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif",
             )
-            .child(self.render_title_bar(cx))
+            .child(self.render_title_bar(cx, &colors))
             .child(
                 div()
                     .flex()
@@ -369,7 +507,6 @@ impl Render for KubeSparkApp {
                     .flex_1()
                     .child(div().w(sidebar_width).h_full().child({
                         let weak = cx.entity().downgrade();
-                        let weak_toggle = weak.clone();
                         let weak_ctx_menu = weak.clone();
                         let weak_switch = weak.clone();
                         
@@ -383,16 +520,14 @@ impl Render for KubeSparkApp {
                             self.show_context_menu,
                             move |view, _win, cx| {
                                 let _ = weak.update(cx, |this, cx| {
-                                    this.active_view = view.clone();
-                                    this.selected_resource = None;
-                                    this.show_detail = false;
-                                    cx.notify();
-                                });
-                            },
-                            move |_win, cx| {
-                                let _ = weak_toggle.update(cx, |this, cx| {
-                                    this.toggle_sidebar(cx);
-                                    cx.notify();
+                                    if let ActiveView::Resources(kind) = view {
+                                         this.select_resource_kind(kind, cx);
+                                    } else {
+                                         this.active_view = view.clone();
+                                         this.selected_resource = None;
+                                         this.show_detail = false;
+                                         cx.notify();
+                                    }
                                 });
                             },
                             move |_win, cx| {
@@ -412,7 +547,7 @@ impl Render for KubeSparkApp {
                     }))
                     .child(div().flex_1().h_full().child(match active_view {
                         ActiveView::Dashboard => {
-                            DashboardView::new(glass_style).render().into_any_element()
+                            DashboardView::new(glass_style, &colors).render().into_any_element()
                         }
                         ActiveView::Resources(kind) => {
                             let filtered = self
@@ -434,6 +569,7 @@ impl Render for KubeSparkApp {
                                         cx.notify();
                                     });
                                 },
+                                &colors,
                             )
                             .into_any_element()
                         }
@@ -445,7 +581,7 @@ impl Render for KubeSparkApp {
                                         this.active_view = ActiveView::Resources(ResourceKind::Pod);
                                         cx.notify();
                                     });
-                                })
+                                }, &colors)
                                 .into_any_element()
                         }
                     }))
@@ -506,6 +642,7 @@ impl Render for KubeSparkApp {
                                     }).detach();
                                 });
                             },
+                            &colors,
                         ))
                     } else {
                         div()

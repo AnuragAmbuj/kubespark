@@ -1,6 +1,7 @@
 mod app;
 mod kubernetes;
 mod settings;
+mod theme;
 mod ui;
 
 use gpui::*;

@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use crate::theme::ThemeColors;
 use gpui::*;
 
 /// Glassomorphic styling configuration
@@ -98,54 +99,64 @@ impl GlassStyle {
 /// Extension trait for applying glass effects to div elements
 pub trait GlassExt: Sized {
     /// Apply glass panel styling
-    fn glass_panel(self, glass_style: GlassStyle) -> Self;
+    fn glass_panel(self, glass_style: GlassStyle, colors: &ThemeColors) -> Self;
 
     /// Apply glass sidebar styling
-    fn glass_sidebar(self, glass_style: GlassStyle) -> Self;
+    fn glass_sidebar(self, glass_style: GlassStyle, colors: &ThemeColors) -> Self;
 
     /// Apply glass card styling
-    fn glass_card(self, glass_style: GlassStyle) -> Self;
+    fn glass_card(self, glass_style: GlassStyle, colors: &ThemeColors) -> Self;
 
     /// Apply glass titlebar styling
-    fn glass_titlebar(self, glass_style: GlassStyle) -> Self;
+    fn glass_titlebar(self, glass_style: GlassStyle, colors: &ThemeColors) -> Self;
 }
 
 impl GlassExt for Div {
-    fn glass_panel(self, glass_style: GlassStyle) -> Self {
+    fn glass_panel(self, glass_style: GlassStyle, colors: &ThemeColors) -> Self {
         if !glass_style.enabled {
-            return self.bg(rgb(0x2d2d30));
+            return self
+                .bg(colors.bg_panel)
+                .border_1()
+                .border_color(colors.border);
         }
 
-        // Create semi-transparent background
-        let bg_color = glass_style.apply_to_panel(hsla(0.0, 0.0, 0.18, 1.0));
-        let border_color = glass_style.apply_to_border(hsla(0.0, 0.0, 0.25, 1.0));
+        // Create semi-transparent background derived from theme panel color
+        let base_core: Hsla = colors.bg_panel.into();
+        let bg_color = glass_style.apply_to_panel(base_core);
+        let border_core: Hsla = colors.border.into();
+        let border_color = glass_style.apply_to_border(border_core);
 
         self.bg(bg_color).border_1().border_color(border_color)
-        // Note: GPUI may not support backdrop-filter yet, but we prepare for it
-        // .backdrop_blur(px(glass_style.backdrop_blur()))
     }
 
-    fn glass_sidebar(self, glass_style: GlassStyle) -> Self {
+    fn glass_sidebar(self, glass_style: GlassStyle, colors: &ThemeColors) -> Self {
         if !glass_style.enabled {
-            return self.bg(rgb(0x252526));
+            return self
+                .bg(colors.bg_sidebar)
+                .border_r_1()
+                .border_color(colors.border);
         }
 
-        let bg_color = glass_style.apply_to_sidebar(hsla(0.0, 0.0, 0.15, 1.0));
-        let border_color = glass_style.apply_to_border(hsla(0.0, 0.0, 0.24, 1.0));
+        let base_core: Hsla = colors.bg_sidebar.into();
+        let bg_color = glass_style.apply_to_sidebar(base_core);
+        let border_core: Hsla = colors.border.into();
+        let border_color = glass_style.apply_to_border(border_core);
 
         self.bg(bg_color).border_r_1().border_color(border_color)
     }
 
-    fn glass_card(self, glass_style: GlassStyle) -> Self {
+    fn glass_card(self, glass_style: GlassStyle, colors: &ThemeColors) -> Self {
         if !glass_style.enabled {
             return self
-                .bg(rgb(0x1e1e1e))
+                .bg(colors.bg_element)
                 .border_1()
-                .border_color(rgb(0x3e3e3e));
+                .border_color(colors.border);
         }
 
-        let bg_color = glass_style.apply_to_panel(hsla(0.0, 0.0, 0.12, 1.0));
-        let border_color = glass_style.apply_to_border(hsla(0.0, 0.0, 0.20, 1.0));
+        let base_core: Hsla = colors.bg_element.into();
+        let bg_color = glass_style.apply_to_panel(base_core);
+        let border_core: Hsla = colors.border.into();
+        let border_color = glass_style.apply_to_border(border_core);
 
         self.bg(bg_color)
             .border_1()
@@ -153,17 +164,20 @@ impl GlassExt for Div {
             .rounded_lg()
     }
 
-    fn glass_titlebar(self, glass_style: GlassStyle) -> Self {
+    fn glass_titlebar(self, glass_style: GlassStyle, colors: &ThemeColors) -> Self {
         if !glass_style.enabled {
             return self
-                .bg(rgb(0x2d2d30))
+                .bg(colors.bg_panel)
                 .border_b_1()
-                .border_color(rgb(0x3e3e3e));
+                .border_color(colors.border);
         }
 
         // Slightly clearer than panels for better readability of window controls
-        let bg_color = glass_style.apply_to_panel(hsla(0.0, 0.0, 0.15, 0.9));
-        let border_color = glass_style.apply_to_border(hsla(0.0, 0.0, 0.20, 1.0));
+        let mut base_core: Hsla = colors.bg_panel.into();
+        base_core.a = 0.9;
+        let bg_color = glass_style.apply_to_panel(base_core);
+        let border_core: Hsla = colors.border.into();
+        let border_color = glass_style.apply_to_border(border_core);
 
         self.bg(bg_color).border_b_1().border_color(border_color)
     }

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use anyhow::{anyhow, Context, Result};
-use chrono::Utc;
+
 use k8s_openapi::api::{
     apps::v1::{DaemonSet, Deployment, ReplicaSet, StatefulSet},
     batch::v1::{CronJob, Job},
@@ -13,7 +13,7 @@ use kube::{
     config::{KubeConfigOptions, Kubeconfig},
     Api, Client, Config,
 };
-use log::{debug, error, info};
+use log::{error, info};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -152,6 +152,9 @@ impl KubeClient {
                     namespace: None,
                     status,
                     age,
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::to_value(ns).ok()?,
                 })
             })
@@ -189,12 +192,24 @@ impl KubeClient {
                     .map(|ts| format_age(&ts.0))
                     .unwrap_or_else(|| "Unknown".to_string());
 
+                let restart_count = pod
+                    .status
+                    .as_ref()
+                    .and_then(|s| s.container_statuses.as_ref())
+                    .map(|statuses| statuses.iter().map(|s| s.restart_count).sum());
+
+                let node_name = pod.spec.as_ref().and_then(|s| s.node_name.clone());
+                let pod_ip = pod.status.as_ref().and_then(|s| s.pod_ip.clone());
+
                 Some(ResourceItem {
                     kind: ResourceKind::Pod,
                     name,
                     namespace,
                     status,
                     age,
+                    restart_count,
+                    node_name,
+                    pod_ip,
                     metadata: serde_json::to_value(pod).ok()?,
                 })
             })
@@ -244,6 +259,9 @@ impl KubeClient {
                     namespace,
                     status,
                     age,
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::to_value(deploy).ok()?,
                 })
             })
@@ -287,6 +305,9 @@ impl KubeClient {
                     namespace,
                     status,
                     age,
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::to_value(ss).ok()?,
                 })
             })
@@ -330,6 +351,9 @@ impl KubeClient {
                     namespace,
                     status,
                     age,
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::to_value(ds).ok()?,
                 })
             })
@@ -373,6 +397,9 @@ impl KubeClient {
                     namespace,
                     status,
                     age,
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::to_value(rs).ok()?,
                 })
             })
@@ -416,6 +443,9 @@ impl KubeClient {
                     namespace,
                     status,
                     age,
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::to_value(svc).ok()?,
                 })
             })
@@ -459,6 +489,9 @@ impl KubeClient {
                     namespace,
                     status,
                     age,
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::to_value(job).ok()?,
                 })
             })
@@ -502,6 +535,9 @@ impl KubeClient {
                     namespace,
                     status,
                     age,
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::to_value(cj).ok()?,
                 })
             })
@@ -545,6 +581,9 @@ impl KubeClient {
                     namespace,
                     status,
                     age,
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::to_value(cm).ok()?,
                 })
             })
@@ -588,6 +627,9 @@ impl KubeClient {
                     namespace,
                     status,
                     age,
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::to_value(secret).ok()?,
                 })
             })
@@ -631,6 +673,9 @@ impl KubeClient {
                     namespace,
                     status,
                     age,
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::to_value(ing).ok()?,
                 })
             })
@@ -670,6 +715,9 @@ impl KubeClient {
                     namespace: None,
                     status,
                     age,
+                    restart_count: None,
+                    node_name: None,
+                    pod_ip: None,
                     metadata: serde_json::to_value(node).ok()?,
                 })
             })

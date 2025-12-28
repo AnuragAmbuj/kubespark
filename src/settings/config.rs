@@ -56,6 +56,9 @@ pub struct AppearanceSettings {
 
     /// Animation duration in milliseconds
     pub animation_duration: u32,
+
+    /// Is sidebar collapsed
+    pub sidebar_collapsed: bool,
 }
 
 impl Default for AppearanceSettings {
@@ -67,12 +70,15 @@ impl Default for AppearanceSettings {
             theme: Theme::Dark,
             ui_font_size: 13.0,
             code_font_size: 12.0,
-            ui_font_family: "'SF Pro Display', 'Inter', 'Segoe UI', system-ui, sans-serif".to_string(),
-            code_font_family: "'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, monospace".to_string(),
+            ui_font_family: "'SF Pro Display', 'Inter', 'Segoe UI', system-ui, sans-serif"
+                .to_string(),
+            code_font_family: "'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, monospace"
+                .to_string(),
             show_sidebar_icons: true,
             sidebar_width: 220.0,
             animations_enabled: true,
             animation_duration: 200,
+            sidebar_collapsed: false,
         }
     }
 }

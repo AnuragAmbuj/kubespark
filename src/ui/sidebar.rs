@@ -1,5 +1,6 @@
 use crate::kubernetes::ResourceKind;
 use crate::settings::AppearanceSettings;
+use crate::theme::{ThemeColors, ThemeExt};
 use crate::ui::glass::{GlassExt, GlassStyle};
 use crate::ui::ActiveView;
 use gpui::prelude::*;
@@ -18,7 +19,6 @@ impl Sidebar {
         available_contexts: Vec<String>,
         show_context_menu: bool,
         on_select: impl Fn(ActiveView, &mut Window, &mut App) + 'static + Clone,
-        on_toggle: impl Fn(&mut Window, &mut App) + 'static + Clone,
         on_toggle_context_menu: impl Fn(&mut Window, &mut App) + 'static + Clone,
         on_switch_context: impl Fn(String, &mut Window, &mut App) + 'static + Clone,
     ) -> impl IntoElement {
@@ -30,46 +30,36 @@ impl Sidebar {
         let on_select_overview = on_select.clone();
         let on_toggle_menu = on_toggle_context_menu.clone();
 
+        // Get theme colors
+        let colors = settings.theme.colors();
+
         div()
             .flex()
             .flex_col()
             .size_full()
-            .glass_sidebar(glass_style)
+            .glass_sidebar(glass_style, &colors)
+            .bg(colors.bg_sidebar) // Use theme background
             .pt_3()
             .pb_2()
             .px_2()
             .gap_3()
-            // Header / Toggle
+            // Header (Cluster label)
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .justify_between()
                     .px_3()
                     .pb_2()
                     .child(if !is_collapsed {
                         div()
                             .text_xs()
                             .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(0x888888))
+                            .text_color(colors.text_muted)
                             .child("CLUSTER")
                     } else {
-                        div()
-                    })
-                    .child(
-                        div()
-                            .id("sidebar-toggle")
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .w(px(20.0))
-                            .h(px(20.0))
-                            .rounded_sm()
-                            .cursor(CursorStyle::PointingHand)
-                            .hover(|style| style.bg(rgb(0x3e3e3e)))
-                            .child(if is_collapsed { "»" } else { "«" })
-                            .on_click(move |_, win, app| on_toggle(win, app)),
-                    ),
+                        // Empty placeholder or nothing when collapsed
+                        div().h(px(20.0)) // Maintain height
+                    }),
             )
             // Context Selector (only if not collapsed)
             .child(if !is_collapsed {
@@ -88,14 +78,15 @@ impl Sidebar {
                             .px_2()
                             .py_1()
                             .rounded_md()
-                            .bg(rgb(0x2a2a2e))
+                            .bg(colors.bg_element)
                             .cursor(CursorStyle::PointingHand)
-                            .hover(|style| style.bg(rgb(0x3e3e3e)))
+                            .hover(move |style| style.bg(colors.bg_element_hover))
                             .child(
                                 div().flex().items_center().gap_2().child("☸").child(
                                     div()
                                         .text_sm()
                                         .text_ellipsis()
+                                        .text_color(colors.text_primary)
                                         .child(current_context.clone()),
                                 ),
                             )
@@ -103,14 +94,19 @@ impl Sidebar {
                             .on_click(move |_, win, app| on_toggle_menu(win, app)),
                     )
                     .children(if show_context_menu {
+                        // Colors for menu
+                        let bg_panel = colors.bg_panel;
+                        let border_color = colors.border;
+                        let bg_element_hover = colors.bg_element_hover;
+
                         Some(
                             div()
                                 .flex()
                                 .flex_col()
-                                .bg(rgb(0x1e1e1e))
+                                .bg(bg_panel)
                                 .rounded_md()
                                 .border_1()
-                                .border_color(rgb(0x3e3e3e))
+                                .border_color(border_color)
                                 .p_1()
                                 .mt_1()
                                 .children(available_contexts.into_iter().map(move |ctx| {
@@ -122,12 +118,12 @@ impl Sidebar {
                                         .py_1()
                                         .rounded_sm()
                                         .cursor(CursorStyle::PointingHand)
-                                        .hover(|style| style.bg(rgb(0x2a2a2e)))
+                                        .hover(move |style| style.bg(bg_element_hover))
                                         .bg(if is_current {
-                                            rgb(0x3e3e3e)
+                                            bg_element_hover
                                         } else {
-                                            rgb(0x00000000)
-                                        }) // Transparent if not active
+                                            gpui::rgba(0x00000000)
+                                        })
                                         .child(ctx);
 
                                     item.on_mouse_down(
@@ -145,6 +141,14 @@ impl Sidebar {
             // Overview
             .child(div().flex().flex_col().gap_px().child({
                 let is_active = matches!(active_view, ActiveView::Dashboard);
+
+                // Clone colors
+                let bg_element_active = colors.bg_element_active;
+                let text_inverse = colors.text_inverse;
+                let text_secondary = colors.text_secondary;
+                let ghost_element_hover = colors.ghost_element_hover;
+                let text_primary = colors.text_primary;
+
                 let mut item = div()
                     .id("overview")
                     .flex()
@@ -158,11 +162,11 @@ impl Sidebar {
                     .cursor(CursorStyle::PointingHand);
 
                 if is_active {
-                    item = item.bg(rgb(0x37373d)).text_color(rgb(0xffffff));
+                    item = item.bg(bg_element_active).text_color(text_inverse);
                 } else {
                     item = item
-                        .text_color(rgb(0xcccccc))
-                        .hover(|style| style.bg(rgb(0x2a2a2e)).text_color(rgb(0xffffff)));
+                        .text_color(text_secondary)
+                        .hover(move |style| style.bg(ghost_element_hover).text_color(text_primary));
                 }
 
                 if is_collapsed {
@@ -178,7 +182,7 @@ impl Sidebar {
                 div()
                     .text_xs()
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(0x888888))
+                    .text_color(colors.text_muted)
                     .px_3()
                     .pb_1()
                     .pt_2()
@@ -199,6 +203,7 @@ impl Sidebar {
                             &active_view,
                             is_collapsed,
                             on_select.clone(),
+                            &colors,
                         )
                     })),
             )
@@ -234,6 +239,7 @@ impl Sidebar {
         active_view: &ActiveView,
         is_collapsed: bool,
         on_select: impl Fn(ActiveView, &mut Window, &mut App) + 'static + Clone,
+        colors: &ThemeColors,
     ) -> impl IntoElement {
         div()
             .flex()
@@ -243,7 +249,7 @@ impl Sidebar {
                 div()
                     .text_xs()
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(0x666666))
+                    .text_color(colors.text_muted)
                     .px_3()
                     .pb_1()
                     .child(category.to_uppercase())
@@ -257,6 +263,7 @@ impl Sidebar {
                     active_view,
                     is_collapsed,
                     on_select.clone(),
+                    colors,
                 )
             }))
     }
@@ -267,6 +274,7 @@ impl Sidebar {
         active_view: &ActiveView,
         is_collapsed: bool,
         on_select: impl Fn(ActiveView, &mut Window, &mut App) + 'static + Clone,
+        colors: &ThemeColors,
     ) -> impl IntoElement {
         let display_name = kind.display_name().to_string();
         let icon_str = match kind {
@@ -314,11 +322,15 @@ impl Sidebar {
             .cursor(CursorStyle::PointingHand);
 
         if is_active {
-            item = item.bg(rgb(0x37373d)).text_color(rgb(0xffffff));
-        } else {
             item = item
-                .text_color(rgb(0xcccccc))
-                .hover(|style| style.bg(rgb(0x2a2a2e)).text_color(rgb(0xffffff)));
+                .bg(colors.bg_element_active)
+                .text_color(colors.text_inverse);
+        } else {
+            item = item.text_color(colors.text_secondary).hover(move |style| {
+                style
+                    .bg(colors.ghost_element_hover)
+                    .text_color(colors.text_primary)
+            });
         }
 
         if is_collapsed {

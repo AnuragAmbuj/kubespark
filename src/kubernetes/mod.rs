@@ -69,7 +69,11 @@ impl ResourceKind {
         match self {
             Self::Namespace => "Cluster",
             Self::Node => "Cluster",
-            Self::Pod | Self::Deployment | Self::StatefulSet | Self::DaemonSet | Self::ReplicaSet => "Workloads",
+            Self::Pod
+            | Self::Deployment
+            | Self::StatefulSet
+            | Self::DaemonSet
+            | Self::ReplicaSet => "Workloads",
             Self::Job | Self::CronJob => "Workloads",
             Self::Service | Self::Ingress => "Network",
             Self::ConfigMap | Self::Secret => "Config",
@@ -85,5 +89,8 @@ pub struct ResourceItem {
     pub namespace: Option<String>,
     pub status: String,
     pub age: String,
+    pub restart_count: Option<i32>,
+    pub node_name: Option<String>,
+    pub pod_ip: Option<String>,
     pub metadata: serde_json::Value,
 }
